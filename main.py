@@ -1,23 +1,45 @@
 import requests
 import time
 import datetime
+import json
+import math
+import sys
 
 
-ASSET_ID = "bitcoin"
-VS_CURRENCY = "usd"
-API_BASE_URL = "https://api.coingecko.com/api/v3"
-CHECK_INTERVAL_SECONDS = 60 
-API_BASE_URL = "https://api.coingecko.com/api/v3"
-API_PARAMS = {
-    "ids": ASSET_ID,
-    "vs_currencies": VS_CURRENCY
-}
-API_URL = f"{API_BASE_URL}/simple/price"
-# --- Alerting Config ---
-# !!! PASTE YOUR WEBHOOK URL HERE !!!
-# This is a SECRET. Do NOT share it or commit it to GitHub.
-DISCORD_WEBHOOK_URL = "!!! PASTE YOUR WEBHOOK URL HERE !!!"
-ALERT_THRESHOLD_PERCENT = 0.01
+def load_config():
+    CONFIG_FILE = "config.json"
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ CONFIG ERROR: '{CONFIG_FILE}' not found.")
+        print(f"Please copy 'config.example.json' to '{CONFIG_FILE}' and configure it.")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        print(f"❌ CONFIG ERROR: '{CONFIG_FILE}' contains invalid JSON.")
+        sys.exit(1)
+        
+    # Validate that all required keys are present
+    required_keys = [
+        "discord_webhook_url", 
+        "asset_id", 
+        "vs_currency", 
+        "check_interval_seconds", 
+        "alert_threshold_percent"
+    ]
+    
+    missing_keys = [key for key in required_keys if key not in config or not config[key]]
+    
+    if missing_keys:
+        print(f"❌ CONFIG ERROR: Missing or empty keys in '{CONFIG_FILE}': {', '.join(missing_keys)}")
+        sys.exit(1)
+        
+    # Specific check for the placeholder URL
+    if "PASTE_YOUR_WEBHOOK_URL_HERE" in config["discord_webhook_url"]:
+        print(f"❌ CONFIG ERROR: Please replace the placeholder in 'discord_webhook_url' in '{CONFIG_FILE}'.")
+        sys.exit(1)
+        
+    return config
 
 def get_price():
     try:
@@ -52,6 +74,21 @@ def calculate_percentage_change(old_price, new_price):
     return change
 
 if __name__ == "__main__":
+
+    config = load_config()
+    DISCORD_WEBHOOK_URL = config["discord_webhook_url"]
+    ASSET_ID = config["asset_id"]
+    VS_CURRENCY = config["vs_currency"]
+    CHECK_INTERVAL_SECONDS = config["check_interval_seconds"]
+    ALERT_THRESHOLD_PERCENT = config["alert_threshold_percent"]
+
+    API_BASE_URL = "https://api.coingecko.com/api/v3"
+    API_PARAMS = {
+        "ids": ASSET_ID,
+        "vs_currencies": VS_CURRENCY
+    }
+    API_URL = f"{API_BASE_URL}/simple/price"
+
     print("--- Realtime Market Fluctuation Alert Tool ---")
     print(f"Fetching the first price for {ASSET_ID.capitalize()}.")
     last_price = get_price()
