@@ -98,7 +98,7 @@ if __name__ == "__main__":
     else:
         print(f"Initial price for {ASSET_ID.capitalize()} is ${last_price}. Starting monitoring loop...")
         
-try:
+        try:
             while True:
                 time.sleep(CHECK_INTERVAL_SECONDS)
 
@@ -138,5 +138,5 @@ try:
 
                 except ValueError as e:
                     print(f"[{current_time}] ❌ Calculation Error: {e}")        
-except KeyboardInterrupt:
+        except KeyboardInterrupt:
             print("\n👋 Monitoring stopped by user. Exiting.")
