@@ -22,7 +22,7 @@ def load_config():
     # Validate that all required keys are present
     required_keys = [
         "discord_webhook_url", 
-        "asset_id", 
+        "asset_ids", 
         "vs_currency", 
         "check_interval_seconds", 
         "alert_threshold_percent"
@@ -44,14 +44,14 @@ def load_config():
 def get_price():
     try:
         response = requests.get(API_URL, params=API_PARAMS)
-        # Raise an HTTPError for bad responses (4xx or 5xx)
         response.raise_for_status() 
         data = response.json()
-        return data[ASSET_ID][VS_CURRENCY]
+        # Return the entire data dict for all assets
+        return data
     except requests.exceptions.RequestException as e:
-        # Handle network-related errors, e.g., connection timeout.
         print(f"API Request Error: {e}")
         return None
+
 def send_discord_alert(message):
     if DISCORD_WEBHOOK_URL == "!!! PASTE YOUR WEBHOOK URL HERE !!!":
         print("❌ DISCORD ALERT: Webhook URL is not set. Skipping alert.")
@@ -77,66 +77,81 @@ if __name__ == "__main__":
 
     config = load_config()
     DISCORD_WEBHOOK_URL = config["discord_webhook_url"]
-    ASSET_ID = config["asset_id"]
+    ASSET_IDS = config["asset_ids"]
     VS_CURRENCY = config["vs_currency"]
     CHECK_INTERVAL_SECONDS = config["check_interval_seconds"]
     ALERT_THRESHOLD_PERCENT = config["alert_threshold_percent"]
 
     API_BASE_URL = "https://api.coingecko.com/api/v3"
+    assets_string = ','.join(ASSET_IDS)
     API_PARAMS = {
-        "ids": ASSET_ID,
+        "ids": assets_string,
         "vs_currencies": VS_CURRENCY
     }
     API_URL = f"{API_BASE_URL}/simple/price"
 
     print("--- Realtime Market Fluctuation Alert Tool ---")
-    print(f"Fetching the first price for {ASSET_ID.capitalize()}.")
-    last_price = get_price()
+    print(f"Fetching the first prices for {', '.join(ASSET_IDS)}.")
+    
+    # Store last prices for all assets
+    last_prices = {}
+    initial_data = get_price()
 
-    if last_price is None:
-        print("Could not fetch initial price. Please check your connection or the API status.")
-    else:
-        print(f"Initial price for {ASSET_ID.capitalize()} is ${last_price}. Starting monitoring loop...")
-        
-        try:
-            while True:
-                time.sleep(CHECK_INTERVAL_SECONDS)
+    if initial_data is None:
+        print("Could not fetch initial prices. Please check your connection or the API status.")
+        sys.exit(1)
+    
+    # Initialize last_prices for each asset
+    for asset_id in ASSET_IDS:
+        if asset_id in initial_data and VS_CURRENCY in initial_data[asset_id]:
+            last_prices[asset_id] = initial_data[asset_id][VS_CURRENCY]
+            print(f"Initial price for {asset_id.capitalize()}: ${last_prices[asset_id]:,.2f}")
+        else:
+            print(f"❌ Could not fetch initial price for {asset_id}")
+            sys.exit(1)
+    
+    print("Starting monitoring loop...")
+    
+    try:
+        while True:
+            time.sleep(CHECK_INTERVAL_SECONDS)
 
-                current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                current_price = get_price()
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_data = get_price()
 
-                if current_price is None:
-                    print(f"[{current_time}] Could not fetch new price. Skipping check.")
+            if current_data is None:
+                print(f"[{current_time}] Could not fetch new prices. Skipping check.")
+                continue
+
+            # Check each asset
+            for asset_id in ASSET_IDS:
+                if asset_id not in current_data or VS_CURRENCY not in current_data[asset_id]:
+                    print(f"[{current_time}] Could not fetch price for {asset_id}. Skipping.")
                     continue
+                
+                current_price = current_data[asset_id][VS_CURRENCY]
+                last_price = last_prices[asset_id]
 
                 try:
                     percentage_change = calculate_percentage_change(last_price, current_price)
                     
-                    # --- The Core Alert Logic ---
-                    # We use abs() to check the magnitude of the change (positive or negative).
                     if abs(percentage_change) >= ALERT_THRESHOLD_PERCENT:
-                        
-                        # --- 1. Construct the Alert Message ---
-                        # We use 'f-strings' to format a rich message.
                         alert_message = (
-                            f"🚨 **{ASSET_ID.capitalize()} Price Alert!** 🚨\n"
-                            f"> Price changed by **`{percentage_change:+.2f}%`** in the last minute!\n"
+                            f"🚨 **{asset_id.capitalize()} Price Alert!** 🚨\n"
+                            f"> Price changed by **`{percentage_change:+.2f}%`** in the last {CHECK_INTERVAL_SECONDS}s!\n"
                             f"> **Old Price:** `${last_price:,.2f}`\n"
                             f"> **New Price:** `${current_price:,.2f}`"
                         )
                         
-                        # --- 2. Send the Alert ---
-                        print(f"[{current_time}] 🔔 THRESHOLD EXCEEDED! Change: {percentage_change:+.2f}%")
+                        print(f"[{current_time}] 🔔 {asset_id.upper()} THRESHOLD EXCEEDED! Change: {percentage_change:+.2f}%")
                         send_discord_alert(alert_message)
-                    
                     else:
-                        # --- 3. If No Alert, Just Print a Quiet Log ---
-                        print(f"[{current_time}] Price: ${current_price:,.2f} | Change: {percentage_change:+.2f}% (No alert)")
+                        print(f"[{current_time}] {asset_id.capitalize()}: ${current_price:,.2f} | Change: {percentage_change:+.2f}% (No alert)")
                     
-                    # CRUCIAL: Update last_price for the next loop.
-                    last_price = current_price
+                    # Update last_price for this asset
+                    last_prices[asset_id] = current_price
 
                 except ValueError as e:
-                    print(f"[{current_time}] ❌ Calculation Error: {e}")        
-        except KeyboardInterrupt:
-            print("\n👋 Monitoring stopped by user. Exiting.")
+                    print(f"[{current_time}] ❌ Calculation Error for {asset_id}: {e}")        
+    except KeyboardInterrupt:
+        print("\n👋 Monitoring stopped by user. Exiting.")
