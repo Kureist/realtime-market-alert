@@ -1,7 +1,19 @@
 {
   "discord_webhook_url": "!!! PASTE YOUR WEBHOOK URL HERE !!!",
-  "asset_ids": ["bitcoin", "ethereum", "cardano"],
+  "assets": [
+    {
+      "id": "bitcoin",
+      "alert_threshold_percent": 1.0
+    },
+    {
+      "id": "ethereum",
+      "alert_threshold_percent": 1.5
+    },
+    {
+      "id": "cardano",
+      "alert_threshold_percent": 2.0
+    }
+  ],
   "vs_currency": "usd",
-  "check_interval_seconds": 60,
-  "alert_threshold_percent": 1.0
+  "check_interval_seconds": 60
 }
